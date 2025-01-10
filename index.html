@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Take Photo and Scan QR Code</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        #status {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        #capture-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #capture-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Capture Photo and Scan QR Code</h1>
+    <video id="video" width="300" height="200" autoplay></video>
+    <canvas id="canvas"></canvas>
+    <p id="status">Waiting for QR code...</p>
+    <button id="capture-button">Capture Photo</button>
+
+    <script>
+        const video = document.getElementById('video');
+        const statusElement = document.getElementById('status');
+        const captureButton = document.getElementById('capture-button');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        // Start camera stream
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then((stream) => {
+                video.srcObject = stream;
+                video.play();
+                console.log('Camera initialized');
+            })
+            .catch((error) => {
+                statusElement.textContent = 'Camera not found.';
+                console.error('Error accessing camera:', error);
+            });
+
+        // Capture the photo from the video feed when the button is clicked
+        captureButton.addEventListener('click', () => {
+            // Set canvas dimensions to match video feed
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Draw the current frame from the video to the canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Scan the image on the canvas for a QR code
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, canvas.width, canvas.height);
+
+            if (code) {
+                const orderId = code.data; // Assuming QR code contains the Order ID
+                console.log('QR code detected:', orderId); // Debugging log
+                updateOrderStatus(orderId);
+            } else {
+                statusElement.textContent = 'QR code not found. Please try again.';
+                console.log('QR code not found');
+            }
+        });
+
+        function updateOrderStatus(orderId) {
+    statusElement.textContent = `Order ${orderId} detected. Marking as delivered...`;
+
+    // Log the orderId for debugging
+    console.log('Sending Order ID:', orderId);
+
+    fetch(`/update-order-status/${orderId}`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'Delivered' }),  // Make sure the status is set correctly
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            throw new Error('Failed to update order status');
+        }
+    })
+    .then(data => {
+        console.log(data); // Log the response for debugging
+        if (data.message) {
+            statusElement.textContent = `Order ${orderId} marked as delivered.`;
+        }
+    })
+    .catch((error) => {
+        console.error('Error:', error);  // Log the error for debugging
+        statusElement.textContent = 'Failed to update order status.';
+    });
+}
+
+    </script>
+</body>
+</html>
