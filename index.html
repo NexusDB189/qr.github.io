@@ -60,9 +60,20 @@
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
     <p id="status">Waiting for QR code...</p>
-    <button id="capture-button">Capture Photo</button>
+    <button id="updateStatusBtn">Update Order Status</button>
 
     <script>
+
+document.getElementById('updateStatusBtn').addEventListener('click', () => {
+    const orderId = prompt("Enter Order ID:");
+    const newStatus = prompt("Enter New Status:");
+
+    if (orderId && newStatus) {
+        updateOrderStatus(orderId, newStatus);
+    } else {
+        alert("Both Order ID and Status are required.");
+    }
+});
         const video = document.getElementById('video');
         const statusElement = document.getElementById('status');
         const captureButton = document.getElementById('capture-button');
@@ -112,7 +123,7 @@
     headers: {
         'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ id: 1, status: 'Delivered' })
+    body: JSON.stringify({ id: orderId, status: newStatus })
 })
 .then(response => response.json())
 .then(data => {
