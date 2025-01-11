@@ -3,140 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Take Photo and Scan QR Code</title>
+    <title>Order Status Update</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        h1 {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        #video {
-            width: 100%;
-            max-width: 400px;
-            height: auto;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-        }
-
-        #status {
-            margin-top: 20px;
-            font-size: 16px;
-            font-weight: bold;
-            text-align: center;
-        }
-
-        #canvas {
-            display: none;
-        }
-
-        #capture-button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        #capture-button:hover {
-            background-color: #0056b3;
-        }
-    </style>
 </head>
 <body>
-    <h1>Capture Photo and Scan QR Code</h1>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-    <p id="status">Waiting for QR code...</p>
-    <button id="updateStatusBtn">Update Order Status</button>
+    <h2>Order Status Update</h2>
+
+    <!-- Hidden order ID field -->
+    <form id="statusForm" action="http://127.0.0.1:5600/update-status" method="POST">
+        <input type="hidden" id="orderId" name="orderId">
+
+        <!-- Status update dropdown -->
+        <label for="status">Update Status:</label>
+        <select name="status" id="status">
+            <option value="delivered">Delivered</option>
+            <option value="not_delivered">Not Delivered</option>
+        </select>
+        
+        <br><br>
+        <button type="submit">Update Status</button>
+    </form>
+
+    <br>
+
+    <!-- QR Scanner -->
+    <video id="preview" autoplay playsinline width="500" height="300" style="border: 1px solid black;"></video>
+    <p id="statusMessage">Scan a QR code</p>
 
     <script>
+        const videoElement = document.getElementById('preview');
+        const statusMessage = document.getElementById('statusMessage');
+        const orderIdField = document.getElementById('orderId');
+        let scannerActive = false;
 
-document.getElementById('updateStatusBtn').addEventListener('click', () => {
-    const orderId = prompt("Enter Order ID:");
-    const newStatus = prompt("Enter New Status:");
+        function startQRCodeScanner() {
+            if (scannerActive) return;
 
-    if (orderId && newStatus) {
-        updateOrderStatus(orderId, newStatus);
-    } else {
-        alert("Both Order ID and Status are required.");
-    }
-});
-        const video = document.getElementById('video');
-        const statusElement = document.getElementById('status');
-        const captureButton = document.getElementById('capture-button');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    videoElement.srcObject = stream;
+                    
+                    const canvas = document.createElement("canvas");
+                    const context = canvas.getContext("2d");
 
-        // Start camera stream
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }) // Use the rear camera
-            .then((stream) => {
-                video.srcObject = stream;
-                video.play();
-                console.log('Camera initialized');
-            })
-            .catch((error) => {
-                statusElement.textContent = 'Unable to access the camera. Please check permissions.';
-                console.error('Error accessing camera:', error);
-            });
+                    videoElement.addEventListener('loadedmetadata', () => {
+                        canvas.width = videoElement.videoWidth;
+                        canvas.height = videoElement.videoHeight;
+                    });
 
-        // Capture the photo from the video feed when the button is clicked
-        captureButton.addEventListener('click', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+                    function scanQRCode() {
+                        if (!scannerActive) return;
 
-            // Draw the current frame from the video to the canvas
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        const decoded = jsQR(imageData.data, canvas.width, canvas.height, {
+                            inversionAttempts: "dontInvert"
+                        });
 
-            // Scan the image on the canvas for a QR code
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, canvas.width, canvas.height);
+                        if (decoded) {
+                            orderIdField.value = decoded.data; // Set the order ID from QR code
+                            statusMessage.textContent = `Order ID: ${decoded.data} scanned.`;
+                            scannerActive = false;
 
-            if (code) {
-                const orderId = code.data; // Assuming QR code contains the Order ID
-                console.log('QR code detected:', orderId); // Debugging log
-                updateOrderStatus(orderId);
-            } else {
-                statusElement.textContent = 'QR code not found. Please try again.';
-                console.log('QR code not found');
-            }
-        });
-        function updateOrderStatus(orderId, newStatus) {
-    const data = new FormData();
-    data.append('id', orderId);
-    data.append('status', newStatus);
+                            // Stop the video stream
+                            videoElement.srcObject.getTracks().forEach(track => track.stop());
+                            return;
+                        }
 
-    fetch('/update-status', {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ id: orderId, status: newStatus })
-})
-.then(response => response.json())
-.then(data => {
-    if (data.error) {
-        console.error('Failed to update status:', data.error);
-        alert('Failed to update order status.');
-    } else {
-        console.log(data.message);
-        alert('Order status updated successfully.');
-    }
-})
-.catch(error => console.error('Error:', error));
+                        statusMessage.textContent = "Scanning for QR code...";
+                        requestAnimationFrame(scanQRCode);
+                    }
+
+                    scannerActive = true;
+                    scanQRCode();
+                })
+                .catch(function(err) {
+                    console.error("Error accessing the camera:", err); // Log the error
+                    statusMessage.textContent = "Error accessing camera: " + err.message;
+                });
         }
+
+        // Start scanning when the page loads
+        window.onload = startQRCodeScanner;
     </script>
 </body>
 </html>
